@@ -1,0 +1,364 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel File Validator</title>
+
+    <!-- SheetJS library for reading Excel files -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            width: 100%;
+            max-width: 500px;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1e293b;
+            font-size: 25px;
+            margin-top: 0;
+        }
+
+        p {
+            color: #64748b;
+            line-height: 1.6;
+            text-align: center;
+        }
+
+        .requirements {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .requirements h3 {
+            margin-top: 0;
+            color: #334155;
+        }
+
+        .requirements ul {
+            margin-bottom: 0;
+            padding-left: 20px;
+            line-height: 1.8;
+            color: #475569;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px dashed #94a3b8;
+            border-radius: 8px;
+            background: #f8fafc;
+            margin: 10px 0 18px;
+        }
+
+        button {
+            width: 100%;
+            padding: 13px;
+            border: none;
+            border-radius: 8px;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        #result {
+            display: none;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 8px;
+            line-height: 1.6;
+            overflow-wrap: anywhere;
+        }
+
+        .success {
+            display: block !important;
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+
+        .error {
+            display: block !important;
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+
+        .error ul {
+            padding-left: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+        <h1>Excel File Validator</h1>
+
+        <p>
+            Upload an Excel file to verify student details
+            and course information.
+        </p>
+
+        <div class="requirements">
+            <h3>File Requirements</h3>
+            <ul>
+                <li>Required columns: Name, Roll No, Course</li>
+                <li>Allowed courses: MBA Tech, CE, AI/DS</li>
+                <li>Name, Roll No and Course must not be empty.</li>
+                <li>Supported formats: .xlsx and .xls</li>
+            </ul>
+        </div>
+
+        <form id="uploadForm">
+            <label for="excelFile"><strong>Select Excel file:</strong></label>
+            <input
+                type="file"
+                id="excelFile"
+                accept=".xlsx,.xls"
+                required
+            >
+
+            <button type="submit" id="validateBtn">
+                Validate File
+            </button>
+        </form>
+
+        <div id="result" role="status" aria-live="polite"></div>
+    </main>
+
+    <script>
+        const form = document.getElementById("uploadForm");
+        const fileInput = document.getElementById("excelFile");
+        const result = document.getElementById("result");
+        const validateBtn = document.getElementById("validateBtn");
+
+        const requiredColumns = ["Name", "Roll No", "Course"];
+
+        const allowedCourses = [
+            "MBA Tech",
+            "CE",
+            "AI/DS"
+        ];
+
+        function showResult(message, isValid) {
+            result.className = isValid ? "success" : "error";
+            result.replaceChildren();
+
+            const heading = document.createElement("strong");
+            heading.textContent = isValid
+                ? "VALID FILE"
+                : "INCORRECT FILE";
+
+            result.appendChild(heading);
+
+            const details = document.createElement("div");
+            details.textContent = message;
+            result.appendChild(details);
+        }
+
+        function showErrors(errors) {
+            result.className = "error";
+            result.replaceChildren();
+
+            const heading = document.createElement("strong");
+            heading.textContent = "INCORRECT FILE";
+            result.appendChild(heading);
+
+            const list = document.createElement("ul");
+
+            errors.forEach(error => {
+                const item = document.createElement("li");
+                item.textContent = error;
+                list.appendChild(item);
+            });
+
+            result.appendChild(list);
+        }
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            result.className = "";
+            result.style.display = "none";
+            result.replaceChildren();
+
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showResult("Please select an Excel file.", false);
+                return;
+            }
+
+            const extension = file.name.split(".").pop().toLowerCase();
+
+            if (!["xlsx", "xls"].includes(extension)) {
+                showResult(
+                    "Unsupported file type. Please select an .xlsx or .xls file.",
+                    false
+                );
+                return;
+            }
+
+            validateBtn.disabled = true;
+            validateBtn.textContent = "Validating...";
+
+            try {
+                if (typeof XLSX === "undefined") {
+                    throw new Error(
+                        "The Excel library could not be loaded. Check your internet connection and try again."
+                    );
+                }
+
+                const buffer = await file.arrayBuffer();
+                const workbook = XLSX.read(buffer, {
+                    type: "array"
+                });
+
+                if (!workbook.SheetNames.length) {
+                    showResult("The Excel file contains no worksheets.", false);
+                    return;
+                }
+
+                // Validate the first worksheet.
+                const worksheet =
+                    workbook.Sheets[workbook.SheetNames[0]];
+
+                // Read rows as arrays to check the exact column structure.
+                const rows = XLSX.utils.sheet_to_json(worksheet, {
+                    header: 1,
+                    defval: "",
+                    blankrows: false
+                });
+
+                if (!rows.length) {
+                    showResult("The worksheet is empty.", false);
+                    return;
+                }
+
+                const headers = rows[0].map(value =>
+                    String(value).trim()
+                );
+
+                const errors = [];
+
+                // Check exact column names, order, and count.
+                const correctStructure =
+                    headers.length === requiredColumns.length &&
+                    requiredColumns.every(
+                        (column, index) => headers[index] === column
+                    );
+
+                if (!correctStructure) {
+                    errors.push(
+                        "Incorrect column structure. The first row must contain exactly: Name, Roll No, Course, in that order."
+                    );
+
+                    showErrors(errors);
+                    return;
+                }
+
+                // Check each student row.
+                let studentCount = 0;
+
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+
+                    const name = String(row[0] ?? "").trim();
+                    const rollNo = String(row[1] ?? "").trim();
+                    const course = String(row[2] ?? "").trim();
+
+                    // Ignore completely empty rows.
+                    if (!name && !rollNo && !course) {
+                        continue;
+                    }
+
+                    studentCount++;
+                    const excelRow = i + 1;
+
+                    if (!name) {
+                        errors.push(
+                            `Row ${excelRow}: Name is missing.`
+                        );
+                    }
+
+                    if (!rollNo) {
+                        errors.push(
+                            `Row ${excelRow}: Roll No is missing.`
+                        );
+                    }
+
+                    if (!course) {
+                        errors.push(
+                            `Row ${excelRow}: Course is missing.`
+                        );
+                    } else if (!allowedCourses.includes(course)) {
+                        errors.push(
+                            `Row ${excelRow}: Invalid course "${course}". Allowed courses are MBA Tech, CE, and AI/DS.`
+                        );
+                    }
+                }
+
+                if (studentCount === 0) {
+                    errors.push(
+                        "No student records were found below the header row."
+                    );
+                }
+
+                if (errors.length > 0) {
+                    showErrors(errors);
+                } else {
+                    showResult(
+                        `All checks passed. ${studentCount} student record(s) are valid.`,
+                        true
+                    );
+                }
+
+            } catch (error) {
+                showResult(
+                    "Unable to read this file. Please upload a valid Excel workbook.",
+                    false
+                );
+                console.error(error);
+            } finally {
+                validateBtn.disabled = false;
+                validateBtn.textContent = "Validate File";
+            }
+        });
+    </script>
+</body>
+</html>
